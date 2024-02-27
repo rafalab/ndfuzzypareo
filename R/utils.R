@@ -377,7 +377,7 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
         if(length(ind) > matches.max){
           total_rank <- rank(total[ind], ties.method = "min")
           full_rank <- rank(full_dist[ind], ties.method = "min")
-          ind <- ind[(total_rank + full_rank)/2 <= matches.max]
+          ind <- ind[pmin(total_rank + full_rank) <= matches.max]
         }
         ret <- cbind(qq[j],
                      tt[ind],
@@ -445,7 +445,7 @@ calibrate_matches <- function(map){
 
   ## keep if 90% match with full name
   map[full_prop_match >= 0.9, `:=`(prop_match = full_prop_match,
-                                   score = mean(lugar_match, na.rm=TRUE),
+                                   score = mean(dob_match, na.rm=TRUE),
                                    pattern = "full")]
 
   patterns <- list(c("pn", "sn", "ap", "am"),
@@ -488,16 +488,17 @@ calibrate_matches <- function(map){
       is.na(map[,score]) ## needed columns not NA and not yet scored
 
     map$prop_match[ind] <- 1 - rowSums(map[ind,..dist_cols])/(rowSums(map[ind,..nchar_cols]))
-
-    the_formula <- paste("lugar_match ~ pmax(prop_match,0.6)")
+  
+    map$lugar_match[is.na(map$lugar_match)] <- FALSE
+    the_formula <- paste("dob_match ~ lugar_match + pmax(prop_match,0.6)")
     if(!is.null(freq_cols)){
       the_formula <- paste(the_formula, "+",
                            paste0("log(pmax(", freq_cols, ",10^-4))", collapse = " + "))
     }
-    if(sum(map[ind & !is.na(lugar_match)]$swap)>=100) the_formula <- paste(the_formula, "swap", sep="+")
+    if(sum(map[ind & !is.na(dob_match)]$swap)>=100) the_formula <- paste(the_formula, "swap", sep="+")
     the_formula <- formula(the_formula)
 
-    fit <- try(glm(the_formula, family = "binomial", data = map[ind & !is.na(lugar_match)]), silent=TRUE)
+    fit <- try(glm(the_formula, family = "binomial", data = map[ind & !is.na(dob_match)]), silent=TRUE)
     if(class(fit)[1]=="try-error"){
       warning(paste0("Not enough data to fit model for pattern ",  paste(p, collapse = ":"),
                      ". Returing NA"))
@@ -533,9 +534,12 @@ cleanup_matches <- function(map, query, target, self.match, cutoff = 0){
     map <- unique(map, by=c("id.x", "id.y"))
   }
 
-  map <- merge(merge(map, query, by.x = "id.x", by.y = "id", all.x = TRUE), target, by.x = "id.y", by.y = "id", all.x=TRUE)
-  cols <- c("id.x", "id.y", "original.x", "original.y", "score",
-            "prop_match", "full_prop_match", "pn_ap_match", "dob_match", "lugar_match", "genero_match", "pattern", "match_type", "full_match", "swap", "truncated")
+  map <- merge(merge(map, query, by.x = "id.x", by.y = "id", all.x = TRUE), 
+               target, by.x = "id.y", by.y = "id", all.x=TRUE)
+  map$dob_dist <- stringdist(map$dob.x, map$dob.y)
+  cols <- c("id.x", "id.y", "original.x", "original.y", "score", "dob_dist",
+            "prop_match", "full_prop_match", "pn_ap_match", "lugar_match", 
+            "genero_match", "pattern", "match_type", "full_match", "swap", "truncated")
   return(map[score>=cutoff, ..cols][order(score, decreasing = TRUE)])
 }
 
