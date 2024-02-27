@@ -1,0 +1,19 @@
+Package: ndfuzzypareo
+Type: Package
+Title: Matches names in spanish that are spelled with error: version that does not use dates.
+Version: 0.0.1
+Authors@R: c(person(c("Rafael", "A."), "Irizarry", email = "rafael_irizarry@dfci.harvard.edu",
+                  role = c("aut", "cre")),
+             person("Mónica", "Robles-Fontán", role = "ctb"))
+Depends: R (>= 3.5.0),
+Imports: stats,
+    data.table,
+    stringr,
+    stringdist,
+    matrixStats
+Description: Matches two databases with names in Spanish. Uses date of birth and location to improve matching and speed.
+License: CC BY-NC-SA 4.0
+Encoding: UTF-8
+LazyData: true
+LazyDataCompression: xz
+RoxygenNote: 7.1.1
