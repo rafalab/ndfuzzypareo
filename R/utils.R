@@ -244,7 +244,6 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
       setnames(fms, "match", "match_type")
     } else fms <- NULL
   }
-
   map <- rbindlist(list(pms, fms))
   return(map)
 }
