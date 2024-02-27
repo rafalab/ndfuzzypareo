@@ -111,17 +111,16 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
   pms <- vector("list", n)
   
   message("Encontrando pareos exactos.")
-  pb <-  txtProgressBar(1, n, style = 3)
-
+  pb <-  txtProgressBar( 1, n, style = 3)
+  
   ## We use these to remove perfect matches and stop paring them
   keep_query <- rep(TRUE, nrow(query))
   keep_target <- rep(TRUE, nrow(target))
-
-  for(i in 1:n){ # in for-loop because we change query and target
+  
+  for (i in 1:n) { # in for-loop because we change query and target
     setTxtProgressBar(pb, i)
-
-    if(lastname_swap[i]){
-
+    
+    if (lastname_swap[i]) {
       ind <- as.character(query$ap) != as.character(query$am)
       ind[is.na(ind)] <- FALSE ##if last names same no point in swapping
       pms[[i]] <- perfect_match_engine(query[ind & keep_query], target[keep_target],
@@ -130,19 +129,18 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
       pms[[i]] <- perfect_match_engine(query[keep_query], target[keep_target],
                                        by.x = by.xs[[i]], by.y = by.ys[[i]])
     }
-
-
+    
     is_full <- identical(by.xs[[i]], "full") & identical(by.ys[[i]],"full")
-    if(!is.null(pms[[i]])){
-      if(nrow(pms[[i]])>0 & self.match){ ## remove repeated comparisons
-        pms[[i]] <- pms[[i]][id.x!=id.y]
-        pms[[i]][, pair := fifelse(id.x < id.y, paste(id.x, id.y, sep=":"), paste(id.y, id.x, sep=":"))]
-        pms[[i]] <- unique(pms[[i]], by="pair")
-        pms[[i]][, pair:= NULL]
+    if (!is.null(pms[[i]])) {
+      if (nrow(pms[[i]]) > 0 & self.match) { ## remove repeated comparisons
+        pms[[i]] <- pms[[i]][id.x != id.y]
+        pms[[i]][, pair := fifelse(id.x < id.y, paste(id.x, id.y, sep = ":"), paste(id.y, id.x, sep = ":"))]
+        pms[[i]] <- unique(pms[[i]], by = "pair")
+        pms[[i]][, pair := NULL]
       }
-      if(nrow(pms[[i]])>0){
+      if (nrow(pms[[i]]) > 0) {
         pms[[i]]$swap <- swap[i]
-        if(is_full & !self.match){
+        if (is_full & !self.match) {
           keep_query[query$id %in% unique(pms[[i]]$id.x)] <- FALSE
           keep_target[target$id %in% unique(pms[[i]]$id.y)] <- FALSE
           pms[[i]]$full_match <- TRUE
@@ -154,16 +152,16 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
       }
     }
   }
-
+  
   pms <- rbindlist(pms)
-
-  if(!is.null(pms)){
-    if(nrow(pms)>0){
-      pms$match <- factor("perfect", levels=c("perfect", "fuzzy"))
+  
+  if (!is.null(pms)) {
+    if (nrow(pms) > 0) {
+      pms$match <- factor("perfect", levels = c("perfect", "fuzzy"))
       pms$truncated <- FALSE
       cols <- c("pn", "sn", "ap", "am")
-      for(cn in cols){
-        pms[[paste(cn, "freq", sep="_")]] <- freq[[cn]]$freq[ match(pms[[ cn ]], freq[[cn]]$name) ]
+      for (cn in cols) {
+        pms[[paste(cn, "freq", sep = "_")]] <- freq[[cn]]$freq[ match(pms[[ cn ]], freq[[cn]]$name) ]
       }
       pms$genero_match <- pms$genero.x == pms$genero.y
       pms$lugar_match <- pms$lugar.x == pms$lugar.y
@@ -171,7 +169,7 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
       pms$truncated <- FALSE
     } else pms <- NULL
   }
-  
+
   message("\nEncontrando pareos con errores.")
 
   fms <- fuzzy_match_engine(query[keep_query], target[keep_target],  total.max=total.max, full.max=full.max,
@@ -202,13 +200,13 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
         }
 
         fms[[ cols[i, "nchar"] ]] <-  pmax(nchar.x, nchar.y, na.rm = TRUE)
-        if(cols[i]!="sn"){
+        if(cols[i] != "sn"){
           fms[[ cols[i, "i_match"] ]] <- substr(fms[[ cols[i, "x"]]], 1, 1) == substr(fms[[ cols[i, "y"]]], 1, 1)
         } else{
           fms$sn_i_match <- fms$sn_i.x == fms$sn_i.y
         }
 
-        if(cols[i]!="full"){
+        if(cols[i] != "full"){
           cn <- cols[i, "name"]
           freq.x <- freq[[cn]]$freq[ match(fms[[ cols[i, "x"] ]], freq[[cn]]$name) ]
           freq.y <- freq[[cn]]$freq[ match(fms[[ cols[i, "y"] ]], freq[[cn]]$name) ]
@@ -319,12 +317,13 @@ perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
   return(map)
 }
 
-fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.match = FALSE){
+fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.match = FALSE,
+                               matches.max = 10){
 
-  qnames <- paste(names(query), "x", sep=".")
-  tnames <- paste(names(target), "y", sep=".")
+  qnames <- paste(names(query), "x", sep = ".")
+  tnames <- paste(names(target), "y", sep = ".")
   
-  if (self.match & nrow(query)<2){
+  if (self.match & nrow(query) < 2){
     fms <- return(NULL)
   } else{
 
@@ -368,16 +367,25 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     am_dist_nona <- am_dist
     am_dist_nona[is.na(am_dist_nona)] <- 0
 
-    total <- pn_dist_nona + sn_dist_nona+ap_dist_nona+am_dist_nona
+    total <- pn_dist_nona + sn_dist_nona + ap_dist_nona + am_dist_nona
 
     ## for all the rows of the target that are within 6 errors of the query we keep
     cat("Finding matches below threshold distance.\n")
     matches <- lapply(1:nrow(total), function(j){
-      ind <- which(total[j,]<= total.max | full_dist[j,] <= full.max)
+      ind <- which(total[j,] <= total.max | full_dist[j,] <= full.max)
       if(length(ind)==0) return(NULL) else{
+        if(length(ind) > matches.max){
+          total_rank <- rank(total[ind], ties.method = "min")
+          full_rank <- rank(full_dist[ind], ties.method = "min")
+          ind <- ind[(total_rank + full_rank)/2 <= matches.max]
+        }
         ret <- cbind(qq[j],
                      tt[ind],
-                     data.table(full_dist = full_dist[j, ind], pn_dist = pn_dist[j,ind], sn_dist = sn_dist[j,ind], ap_dist = ap_dist[j,ind], am_dist =  am_dist[j,ind]))
+                     data.table(full_dist = full_dist[j, ind], 
+                                pn_dist = pn_dist[j,ind], 
+                                sn_dist = sn_dist[j,ind], 
+                                ap_dist = ap_dist[j,ind], 
+                                am_dist =  am_dist[j,ind]))
         ret$swap <- FALSE
         return(ret)
       }
@@ -386,11 +394,11 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
 
     ## if no match look for reverse last name match
     cat("Considering reversed last names.\n")
-    if(any(nomatch_ind)){
+    if (any(nomatch_ind)) {
 
-      full_dist <- full_dist[nomatch_ind,,drop=FALSE]
-      pn_dist <- pn_dist[nomatch_ind,,drop=FALSE]
-      sn_dist <- sn_dist[nomatch_ind,,drop=FALSE]
+      full_dist <- full_dist[nomatch_ind,,drop = FALSE]
+      pn_dist <- pn_dist[nomatch_ind,,drop = FALSE]
+      sn_dist <- sn_dist[nomatch_ind,,drop = FALSE]
 
       qq <- qq[nomatch_ind]
 
@@ -398,16 +406,20 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
 
       am_dist <- stringdistmatrix(qq$am.x, tt$ap.y, method = "lv")
 
-      total <- pn_dist_nona[nomatch_ind,,drop=FALSE] +
-        sn_dist_nona[nomatch_ind,,drop=FALSE]+
+      total <- pn_dist_nona[nomatch_ind,,drop = FALSE] +
+        sn_dist_nona[nomatch_ind,,drop = FALSE] +
         ap_dist + am_dist
 
       matches2 <- lapply(1:nrow(total), function(j){
-        ind <- which(total[j,]<= total.max)
-        if(length(ind)==0) return(NULL) else{
+        ind <- which(total[j,] <= total.max)
+        if(length(ind) == 0) return(NULL) else{
           ret <- cbind(qq[j],
                        tt[ind],
-                       data.table(full_dist = full_dist[j, ind], pn_dist = pn_dist[j,ind], sn_dist = sn_dist[j,ind], ap_dist = ap_dist[j,ind], am_dist =  am_dist[j,ind]))
+                       data.table(full_dist = full_dist[j, ind], 
+                                  pn_dist = pn_dist[j,ind], 
+                                  sn_dist = sn_dist[j,ind], 
+                                  ap_dist = ap_dist[j,ind], 
+                                  am_dist =  am_dist[j,ind]))
           ret$swap <- TRUE
           return(ret)
         }
