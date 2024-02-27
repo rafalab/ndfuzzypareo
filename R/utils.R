@@ -220,7 +220,7 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
       fms$match <- factor("fuzzy", levels=c("perfect", "fuzzy"))
       fms$genero_match <- fms$genero.x == fms$genero.y
       fms$lugar_match <- fms$lugar.x == fms$lugar.y
-      pms$dob_match <- pms$dob.x == pms$dob.y
+      fms$dob_match <- fms$dob.x == fms$dob.y
       fms$full_match <- FALSE
     }
   }
