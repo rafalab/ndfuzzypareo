@@ -173,7 +173,8 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
 
   message("\nEncontrando pareos con errores.")
 
-  fms <- fuzzy_match_engine(query[keep_query], target[keep_target],  total.max=total.max, full.max=full.max,
+  fms <- fuzzy_match_engine(query[keep_query], target[keep_target],  
+                            total.max = total.max,  full.max = full.max,
                             self.match = self.match)
   if(!is.null(fms)){
     if(nrow(fms)>0){
@@ -505,7 +506,7 @@ calibrate_matches <- function(map){
       the_formula <- paste(the_formula, "+",
                            paste0("log(pmax(", freq_cols, ",10^-4))", collapse = " + "))
     }
-    if(sum(map[ind & !is.na(dob_match)]$swap)>=100) the_formula <- paste(the_formula, "swap", sep="+")
+    if(sum(map[ind & !is.na(dob_match)]$swap) >= 100) the_formula <- paste(the_formula, "swap", sep="+")
     the_formula <- formula(the_formula)
 
     fit <- try(glm(the_formula, family = "binomial", data = map[ind & !is.na(dob_match)]), silent=TRUE)
@@ -520,8 +521,8 @@ calibrate_matches <- function(map){
     map[ind, pattern := paste(p, collapse = ":")]
   }
 
-  map[, pattern := factor(pattern, levels = sapply(patterns, paste, collapse=":"))]
-  map[, score := (score - min(score, na.rm=TRUE)) / max(score - min(score,na.rm=TRUE), na.rm = TRUE)]
+  map[, pattern := factor(pattern, levels = sapply(patterns, paste, collapse = ":"))]
+  map[, score := (score - min(score, na.rm = TRUE)) / max(score - min(score,na.rm = TRUE), na.rm = TRUE)]
 
   return(map)
 }
@@ -545,11 +546,11 @@ cleanup_matches <- function(map, query, target, self.match, cutoff = 0){
   }
 
   map <- merge(merge(map, query, by.x = "id.x", by.y = "id", all.x = TRUE), 
-               target, by.x = "id.y", by.y = "id", all.x=TRUE)
+               target, by.x = "id.y", by.y = "id", all.x = TRUE)
   map$dob_dist <- stringdist(map$dob.x, map$dob.y)
-  cols <- c("id.x", "id.y", "original.x", "original.y", "score", "dob_dist",
+  cols <- c("id.x", "id.y", "original.x", "original.y", "dob.x", "dob.y", "score", "dob_dist",
             "prop_match", "full_prop_match", "pn_ap_match", "lugar_match", 
             "genero_match", "pattern", "match_type", "full_match", "swap", "truncated")
-  return(map[score>=cutoff, ..cols][order(score, decreasing = TRUE)])
+  return(map[score >= cutoff, ..cols][order(score, decreasing = TRUE)])
 }
 

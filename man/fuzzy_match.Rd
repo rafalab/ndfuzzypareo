@@ -2,7 +2,7 @@
 % Please edit documentation in R/fuzzy_match.R
 \name{fuzzy_match}
 \alias{fuzzy_match}
-\title{Match two data bases based on names and dates of birth permitting differences}
+\title{Match two data bases based on names permitting differences}
 \usage{
 fuzzy_match(
   query,
@@ -38,5 +38,5 @@ fuzzy_match(
 A data.table with matches
 }
 \description{
-Match two data bases based on names and dates of birth permitting differences
+Match two data bases based on names permitting differences
 }
