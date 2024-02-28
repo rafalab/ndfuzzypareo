@@ -2,6 +2,7 @@
 #'
 #' @import data.table
 #' @import stringr
+#' @importFrom parallel detectCores mclapply
 #' @importFrom stringdist stringdist stringdistmatrix
 #' @importFrom matrixStats rowAnyNAs
 
@@ -292,12 +293,12 @@ perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
   } else{
     map[, full_dist := stringdist(full.x, full.y)]
     map[, full_nchar := pmin(nchar(full.x), nchar(full.y))]
-    cols <- paste(by.x[by.x!="sn_i"], "dist", sep="_")
+    cols <- paste(by.x[by.x != "sn_i"], "dist", sep = "_")
     map[,(cols) := 0L]
-    for(cn in by.x[!by.x%in%"sn_i"]){
+    for (cn in by.x[!by.x %in% "sn_i"]) {
       map[[paste(cn, "nchar", sep = "_")]] <- nchar(map[[ cn ]])
     }
-    cols <- paste(by.x[!by.x%in%"sn_i"], "i_match", sep="_")
+    cols <- paste(by.x[!by.x %in% "sn_i"], "i_match", sep = "_")
     map[,(cols) := TRUE]
   }
 
@@ -322,58 +323,66 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
   qnames <- paste(names(query), "x", sep = ".")
   tnames <- paste(names(target), "y", sep = ".")
   
-  if (self.match & nrow(query) < 2){
-    fms <- return(NULL)
-  } else{
-
-    qq <- copy(query)
-    tt <- copy(target)
+  tt <- copy(target)
+  setnames(tt, tnames)
+  
+  n_cores <- pmax(detectCores() - 1, 1)  # Leave one core free
+  n <- nrow(query)
+  
+  indexes <- split(1:n, cut(1:n, quantile(1:n, seq(0,1, len = n_cores)), include.lowest = TRUE))
+  
+  fms <- mclapply(indexes, function(ind){
+    
+    if (self.match & length(ind) < 2) {
+      return(NULL)
+    } 
+    
+    qq <- query[ind,]
     setnames(qq, qnames)
-    setnames(tt, tnames)
-
+    
     cat("Computing distances: ")
     
     cat("full, ")
     full_dist <- stringdistmatrix(qq$full.x, tt$full.y, method = "lv")
-
+    
     cat("pn, ")
     pn_dist <- stringdistmatrix(qq$pn.x, tt$pn.y, method = "lv")
-
-    if(self.match){ ##don't compare twice
+    
+    if (self.match) { ##don't compare twice
       full_dist[lower.tri(full_dist, diag = TRUE)] <- Inf
       pn_dist[lower.tri(pn_dist, diag = TRUE)] <- Inf ## make pn_dist Inf instead of total so it stays Inf in the last name swap
     }
-
+    
     pn_dist_nona <- pn_dist
     pn_dist_nona[is.na(pn_dist_nona)] <- 0
-
+    
     sn_i_dist <- outer(qq$sn.x, tt$sn.y, `!=`)*1
     sn_i_dist[is.na(sn_i_dist)] <- 0
-
+    
     cat("sn, ")
     sn_dist <- stringdistmatrix(qq$sn.x, tt$sn.y, method = "lv")
     sn_dist_nona <- sn_dist
     sn_dist_nona[is.na(sn_dist_nona)] <- sn_i_dist[is.na(sn_dist_nona)]
-
+    
     ## consider reversed last names
     cat("ap, ")
     ap_dist <- stringdistmatrix(qq$ap.x, tt$ap.y, method = "lv")
     ap_dist_nona <- ap_dist
     ap_dist_nona[is.na(ap_dist_nona)] <- 0
-
+    
     cat("am\n")
     am_dist <- stringdistmatrix(qq$am.x, tt$am.y, method = "lv")
     am_dist_nona <- am_dist
     am_dist_nona[is.na(am_dist_nona)] <- 0
-
+    
     total <- pn_dist_nona + sn_dist_nona + ap_dist_nona + am_dist_nona
-
+    
     ## for all the rows of the target that are within 6 errors of the query we keep
     cat("Finding matches below threshold distance.\n")
     matches <- lapply(1:nrow(total), function(j){
       ind <- which(total[j,] <= total.max | full_dist[j,] <= full.max)
-      if(length(ind)==0) return(NULL) else{
-        if(length(ind) > matches.max){
+      if (length(ind) == 0) return(NULL) else{
+        if (length(ind) > matches.max) {
           total_rank <- rank(total[ind], ties.method = "min")
           full_rank <- rank(full_dist[ind], ties.method = "min")
           ind <- ind[pmin(total_rank + full_rank) <= matches.max]
@@ -390,28 +399,28 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
       }
     })
     nomatch_ind <- sapply(matches, is.null)
-
+    
     ## if no match look for reverse last name match
     cat("Considering reversed last names.\n")
     if (any(nomatch_ind)) {
-
+      
       full_dist <- full_dist[nomatch_ind,,drop = FALSE]
       pn_dist <- pn_dist[nomatch_ind,,drop = FALSE]
       sn_dist <- sn_dist[nomatch_ind,,drop = FALSE]
-
+      
       qq <- qq[nomatch_ind]
-
+      
       ap_dist <- stringdistmatrix(qq$ap.x, tt$am.y, method = "lv")
-
+      
       am_dist <- stringdistmatrix(qq$am.x, tt$ap.y, method = "lv")
-
+      
       total <- pn_dist_nona[nomatch_ind,,drop = FALSE] +
         sn_dist_nona[nomatch_ind,,drop = FALSE] +
         ap_dist + am_dist
-
+      
       matches2 <- lapply(1:nrow(total), function(j){
         ind <- which(total[j,] <= total.max)
-        if(length(ind) == 0) return(NULL) else{
+        if (length(ind) == 0) return(NULL) else{
           ret <- cbind(qq[j],
                        tt[ind],
                        data.table(full_dist = full_dist[j, ind], 
@@ -426,9 +435,11 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     } else{
       matches2 <- NULL
     }
-    fms <-  rbindlist(c(matches, matches2))
-   }
-  return(fms) 
+    return(rbindlist(c(matches, matches2)))
+  }, mc.cores = n_cores)
+  
+  fms <- rbindlist(fms)
+  return(fms)
 }
 
 calibrate_matches <- function(map){

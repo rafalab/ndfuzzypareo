@@ -10,10 +10,11 @@ Imports: stats,
     data.table,
     stringr,
     stringdist,
-    matrixStats
+    matrixStats,
+    parallel
 Description: Matches two databases with names in Spanish. Uses date of birth and location to improve matching and speed.
 License: CC BY-NC-SA 4.0
 Encoding: UTF-8
 LazyData: true
 LazyDataCompression: xz
-RoxygenNote: 7.1.1
+RoxygenNote: 7.2.3

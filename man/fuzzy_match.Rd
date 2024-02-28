@@ -7,7 +7,7 @@
 fuzzy_match(
   query,
   target = NULL,
-  cutoff = 0.5,
+  cutoff = 0,
   total.max = 8,
   full.max = 8,
   check.truncated = TRUE,
