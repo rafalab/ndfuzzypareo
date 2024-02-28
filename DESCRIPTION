@@ -9,6 +9,7 @@ Depends: R (>= 3.5.0),
 Imports: stats,
     data.table,
     stringr,
+    forcats,
     stringdist,
     matrixStats,
     parallel

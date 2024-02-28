@@ -12,7 +12,8 @@ fuzzy_match(
   full.max = 8,
   check.truncated = TRUE,
   truncate = "am",
-  keep.all.matches = FALSE
+  keep.all.matches = FALSE,
+  n.cores = NULL
 )
 }
 \arguments{

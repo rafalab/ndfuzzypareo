@@ -5,6 +5,7 @@
 #' @export
 #' @import data.table
 #' @import stringr
+#' @importFrom forcats fct_na_value_to_level
 
 wrangle_table <- function(tab){
 
@@ -14,10 +15,10 @@ wrangle_table <- function(tab){
                     "da", "le","st", "mc", "mac", "van", "san", "dos", "el", "d", "o",
                     "de la", "de las", "de los","de lo")
 
-  tab[, original := paste(as.character(forcats::fct_explicit_na(pn, "")),
-                          as.character(forcats::fct_explicit_na(sn, "")),
-                          as.character(forcats::fct_explicit_na(ap, "")),
-                          as.character(forcats::fct_explicit_na(am, "")), sep="|")]
+  tab[, original := paste(as.character(fct_na_value_to_level(pn, "")),
+                          as.character(fct_na_value_to_level(sn, "")),
+                          as.character(fct_na_value_to_level(ap, "")),
+                          as.character(fct_na_value_to_level(am, "")), sep="|")]
   cols <-   cols <- c("pn", "sn", "ap", "am", "genero", "lugar")
   tab[, (cols) := lapply(.SD, forcats::fct_recode, NULL = ""), .SDcols = cols]
   ## covert to factor to join de la x into delax
@@ -37,10 +38,10 @@ wrangle_table <- function(tab){
   ## covert ro chacters for split
   message("Creando cadena con nombre completo.")
 
-  tab[, full := str_remove_all(paste0(as.character(forcats::fct_explicit_na(pn, "")),
-                                      as.character(forcats::fct_explicit_na(sn, "")),
-                                      as.character(forcats::fct_explicit_na(ap, "")),
-                                      as.character(forcats::fct_explicit_na(am, ""))), "\\s+")]
+  tab[, full := str_remove_all(paste0(as.character(fct_na_value_to_level(pn, "")),
+                                      as.character(fct_na_value_to_level(sn, "")),
+                                      as.character(fct_na_value_to_level(ap, "")),
+                                      as.character(fct_na_value_to_level(am, ""))), "\\s+")]
 
   tab[, (cols) := lapply(.SD, as.character), .SDcols = cols]
   ## move second last name if two names in one

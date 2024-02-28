@@ -17,7 +17,8 @@
 
 #' @export
 fuzzy_match <- function(query, target = NULL, cutoff = 0, total.max = 8, full.max= 8,
-                        check.truncated = TRUE, truncate = "am", keep.all.matches = FALSE) {
+                        check.truncated = TRUE, truncate = "am", keep.all.matches = FALSE,
+                        n.cores = NULL) {
 
   query <- copy(query)
 
@@ -43,7 +44,8 @@ fuzzy_match <- function(query, target = NULL, cutoff = 0, total.max = 8, full.ma
 
   all_matches <- get_all_matches(query, target, total.max = total.max, full.max = full.max,
                                  check.truncated = check.truncated,
-                                 truncate = truncate, self.match = self_match)
+                                 truncate = truncate, self.match = self_match,
+                                 n.cores = n.cores)
 
   if(is.null(all_matches)) return(NULL)
 
