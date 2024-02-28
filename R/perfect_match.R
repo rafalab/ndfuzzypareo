@@ -1,6 +1,4 @@
 #' @title Match two data bases based on names and dates of birth
-#'
-#'
 #' @param query A data.table with the names to be matched
 #' @param target A data.table with the names to be matched to
 #'

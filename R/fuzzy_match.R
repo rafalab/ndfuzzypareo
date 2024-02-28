@@ -1,6 +1,4 @@
-#' @title Match two data bases based on names and dates of birth permitting differences
-#'
-#'
+#' @title Match two data bases based on names permitting differences
 #' @param query A data.table with the names to be matched
 #' @param target A data.table with the names to be matched to
 #' @param cutoff Remove any match with score below this number
