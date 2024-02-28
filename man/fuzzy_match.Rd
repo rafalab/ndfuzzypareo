@@ -13,6 +13,7 @@ fuzzy_match(
   check.truncated = TRUE,
   truncate = "am",
   keep.all.matches = FALSE,
+  max.rows = 100,
   n.cores = NULL
 )
 }
@@ -32,6 +33,10 @@ fuzzy_match(
 \item{truncate}{The columns to truncate. Defaults to second name `am`}
 
 \item{keep.all.matches}{if `TRUE` the function returns a list with the final match and a table with all the matches that were considered.}
+
+\item{max.rows}{The query will be split into table with these many rows}
+
+\item{n.cores}{How many cores to use when parallelizing. Defaults to number of cores - 1.}
 
 \item{min.n}{Minimum number of data points needed to fit calibration model}
 }

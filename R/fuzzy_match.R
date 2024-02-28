@@ -8,7 +8,8 @@
 #' @param truncate The columns to truncate. Defaults to second name `am`
 #' @param min.n Minimum number of data points needed to fit calibration model
 #' @param keep.all.matches if `TRUE` the function returns a list with the final match and a table with all the matches that were considered.
-#'
+#' @param max.rows The query will be split into table with these many rows
+#' @param n.cores How many cores to use when parallelizing. Defaults to number of cores - 1.
 #' @return A data.table with matches
 #' @import data.table
 #' @importFrom matrixStats rowAnyNAs
@@ -18,7 +19,7 @@
 #' @export
 fuzzy_match <- function(query, target = NULL, cutoff = 0, total.max = 8, full.max= 8,
                         check.truncated = TRUE, truncate = "am", keep.all.matches = FALSE,
-                        n.cores = NULL) {
+                        max.rows = 100, n.cores = NULL) {
 
   query <- copy(query)
 
@@ -38,14 +39,16 @@ fuzzy_match <- function(query, target = NULL, cutoff = 0, total.max = 8, full.ma
                paste(req_col_names, collapse =", "), "as returned by wrangle_table."))
   }
 
-  if(any(duplicated(query$id)) | any(duplicated(target$id))) stop("id column must be unique in both query and target")
+  if(any(duplicated(query$id)) | any(duplicated(target$id))) stop("id column must be unique in both query and target.")
 
-  if(nrow(query) == 0 | nrow(target) == 0) stop("query and target must have 1 or more rows")
+  if(nrow(query) == 0 | nrow(target) == 0) stop("query and target must have 1 or more rows.")
 
+  if(max.rows < 2) stop("max.rows must be at least 2.")
+  
   all_matches <- get_all_matches(query, target, total.max = total.max, full.max = full.max,
                                  check.truncated = check.truncated,
                                  truncate = truncate, self.match = self_match,
-                                 n.cores = n.cores)
+                                 max.rows = max.rows, n.cores = n.cores)
 
   if(is.null(all_matches)) return(NULL)
 

@@ -76,7 +76,7 @@ reverse_date <- function(tab){
 }
 
 get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
-                             check.truncated = TRUE, truncate = "am", self.match = FALSE, n.cores = NULL) {
+                             check.truncated = TRUE, truncate = "am", self.match = FALSE, max.rows = 100, n.cores = NULL) {
   message("Calculando frecuencias de los nombres.")
   freq <- compute_name_freqs(target)
 
@@ -174,7 +174,7 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
 
   fms <- fuzzy_match_engine(query[keep_query], target[keep_target],  
                             total.max = total.max,  full.max = full.max,
-                            self.match = self.match, n.cores = n.cores)
+                            self.match = self.match, max.rows = max.rows, n.cores = n.cores)
   if(!is.null(fms)){
     if(nrow(fms)>0){
       fms[, total_dist := rowSums(.SD, na.rm=TRUE), .SDcols = patterns("(pn|sn|ap|am)_dist")]
@@ -318,7 +318,7 @@ perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
 }
 
 fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.match = FALSE,
-                               matches.max = 5, n.cores = NULL){
+                               matches.max = 5, max.rows = 100, n.cores = NULL){
 
   qnames <- paste(names(query), "x", sep = ".")
   tnames <- paste(names(target), "y", sep = ".")
@@ -328,10 +328,11 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
   
   if (is.null(n.cores)) n.cores <- pmax(detectCores() - 1, 1)  # Leave one core free
   n <- nrow(query)
+  m <- pmax(ceiling(n/max.rows), n.cores)
   
-  indexes <- split(1:n, cut(1:n, quantile(1:n, seq(0,1, len = n.cores)), include.lowest = TRUE))
+  indexes <- split(1:n, cut(1:n, quantile(1:n, seq(0, 1, len = m + 1)), include.lowest = TRUE))
   
-  cat("Calculando distancias. Dividiendo query en", n.cores, "tabla(s)\n")
+  cat("Calculando distancias. Dividiendo query en", m, "tabla(s)\n")
   
   fms <- mclapply(indexes, function(ind){
     
@@ -439,7 +440,8 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     return(rbindlist(c(matches, matches2)))
   }, mc.cores = n.cores)
 
-  fms <- rbindlist(fms)
+  cat("Combinando tablas.\n")
+    fms <- rbindlist(fms)
   return(fms)
 }
 
@@ -500,8 +502,7 @@ calibrate_matches <- function(map){
 
     map$prop_match[ind] <- 1 - rowSums(map[ind,..dist_cols])/(rowSums(map[ind,..nchar_cols]))
   
-    map$lugar_match[is.na(map$lugar_match)] <- FALSE
-    the_formula <- paste("dob_match ~ lugar_match + pmax(prop_match,0.6)")
+    the_formula <- paste("dob_match ~ pmax(prop_match,0.6)")
     if(!is.null(freq_cols)){
       the_formula <- paste(the_formula, "+",
                            paste0("log(pmax(", freq_cols, ",10^-4))", collapse = " + "))
