@@ -2,6 +2,7 @@
 #'
 #' @import data.table
 #' @import stringr
+#' @import randomForrest
 #' @importFrom parallel detectCores mclapply
 #' @importFrom stringdist stringdist stringdistmatrix
 #' @importFrom matrixStats rowAnyNAs
@@ -281,9 +282,9 @@ perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
       ind <- !is.na(map[[paste(cn, "x", sep = ".")]]) & !is.na(map[[paste(cn, "y", sep = ".")]])
       map[[paste(cn, "dist", sep = "_")]] <- ifelse(ind, 0, NA)
       if(cn != "sn"){
-        map[[paste(cn, "i_match", sep = "_") ]] <- ind
+        map[[paste(cn, "i_match", sep = "_") ]][ind] <- TRUE
       } else{
-        map[[paste(cn, "i_match", sep = "_") ]] <- !is.na(map[["sn_i.x"]]) & !is.na(map[["sn_i.y"]])
+        map[[paste(cn, "i_match", sep = "_") ]][!is.na(map[["sn_i.x"]]) & !is.na(map[["sn_i.y"]])] <- TRUE
       }
       map[[paste(cn, "nchar", sep = "_")]] <-
         pmax(nchar(map[[ paste(cn, "x", sep = ".") ]]),
@@ -445,10 +446,20 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
   return(fms)
 }
 
-calibrate_matches <- function(map){
-
+calibrate_matches <- function(map, mtry = 5){
   map <- copy(map)
+  patterns <- list(c("pn", "sn", "ap", "am"),
+                   c("pn", "sn_i", "ap", "am"),
+                   c("pn", "ap", "am"),
+                   c("pn", "sn", "ap"),
+                   c("pn", "sn_i", "ap"),
+                   c("pn", "ap"),
+                   c("ap", "am"),
+                   c("ap"),
+                   c("pn", "sn"))
+  
   message("\nCalibrando el pareo.")
+  map[,nchar:=as.numeric(NA)]
   map[, prop_match := as.numeric(NA)]
   map[, score := as.numeric(NA)]
   map[, pattern := as.character(NA)]
@@ -456,94 +467,161 @@ calibrate_matches <- function(map){
   map$pn_ap_match <- 1 - rowSums(map[,c("pn_dist", "ap_dist")], na.rm = TRUE)/
     rowSums(map[,c("pn_nchar", "ap_nchar")],na.rm = TRUE)
   ### form the prop match of the individual parts so we can pick best fit
-  total_dist <- rowSums(map[, c("pn_dist", "sn_dist", "ap_dist", "am_dist")], na.rm = TRUE)
-  total_nchar <- rowSums(sapply(c("pn", "sn", "ap", "am"), function(i){
-    x <- map[[paste(i,"dist", sep = "_")]]
-    y <- map[[paste(i,"nchar", sep = "_")]]
-    y[is.na(x)] <- 0
-    y
-  }))
-  sn_i_match <- map$sn_i_match 
-  sn_i_match[is.na(sn_i_match)] <- 1
-  total_dist <- total_dist + ifelse(is.na(map$sn_dist), 1 - sn_i_match*1, 0)
-  total_nchar <- total_nchar +  ifelse(is.na(map$sn_dist) & !is.na(map$sn_i_match), 1, 0)
-  map$total_prop_match <- 1 - total_dist/total_nchar
-  map[,max_match := pmax(total_prop_match, full_prop_match)]
-  ## order 
-  setorder(map, id.x, max_match)
-  map[,max_match := NULL]
-  
-  patterns <- list(c("pn", "sn", "ap", "am"),
-                   c("pn", "sn_i", "ap", "am"),
-                   c("pn", "ap", "am"),
-                   c("pn", "sn", "ap"),
-                   c("pn", "sn_i", "ap"),
-                   c("pn", "ap"),
-                   c("ap", "am"))
-
-  ## what name frequencies to include in model
-  ## decided usign EDA
-  freqs <- list(c("ap","am"),
-                c("ap", "am"),
-                c("pn", "ap", "am"),
-                c("ap"),
-                c("pn", "ap"),
-                c("pn", "ap"),
-                c("ap","am"))
-
-  ## for names with missing frequencies impute the median
-  freq_impute <- function(x){
+  freq_cols <- paste(c("pn", "sn", "ap", "am"), "freq", sep="_")
+  map[, (freq_cols) := lapply(.SD, function(x){
     x[is.na(x)] <- median(x, na.rm=TRUE)
     return(x)
-  }
-  cols <- paste(c("pn", "sn", "ap", "am"), "freq", sep="_")
-  map[, (cols) := lapply(.SD, freq_impute), .SDcols = cols]
-
+  }), .SDcols = freq_cols]
+  
   map[, sn_i_dist := as.numeric(!sn_i_match)]
   map[, sn_i_nchar := as.numeric(!is.na(sn_i_match))]
   
+  ## check sn_i_match is NA for dc31beb8-54da-46a0-b54d-50ff6f5f608d
+  ## compute prop_match for every pattern
   for(i in seq_along(patterns)){
     p <- patterns[[i]]
-    print(p)
-    dist_cols <- paste(p, "dist", sep="_")
+    dist_cols <- paste(p, "dist", sep = "_")
     nchar_cols <- paste(p, "nchar", sep="_")
-    if(!is.null(freqs[[i]])){
-      freq_cols <- paste(freqs[[i]], "freq", sep="_")
-    } else freq_cols <- NULL
-
-    ind <- !matrixStats::rowAnyNAs(as.matrix(map[, ..dist_cols])) &
-      is.na(map[,score]) ## needed columns not NA and not yet scored
-
-    map$prop_match[ind] <- 1 - rowSums(map[ind,..dist_cols])/(rowSums(map[ind,..nchar_cols]))
-  
-    the_formula <- paste("dob_match ~ pmax(prop_match,0.6)")
-    if(!is.null(freq_cols)){
-      the_formula <- paste(the_formula, "+",
-                           paste0("log(pmax(", freq_cols, ",10^-4))", collapse = " + "))
+    ind <- which(!matrixStats::rowAnyNAs(as.matrix(map[, ..dist_cols])) & is.na(map$prop_match))
+    if(length(ind) > 0){
+      map$prop_match[ind] <- 1 - rowSums(map[ind, ..dist_cols])/(rowSums(map[ind, ..nchar_cols]))
+      map$nchar[ind] <- rowSums(map[ind,..nchar_cols])
+      map$pattern[ind] <- paste(patterns[[i]], collapse = ":")
     }
-    if(sum(map[ind & !is.na(dob_match)]$swap) >= 100) the_formula <- paste(the_formula, "swap", sep="+")
-    the_formula <- formula(the_formula)
-    
-    ## now pick best fit so we don't fit glm to all the garbage
-    dat <- map[ind & !is.na(dob_match), .SD[1], by = id.x]
-    print(nrow(dat))
-    fit <- try(glm(the_formula, family = "binomial", data = dat), silent=TRUE)
-    if(class(fit)[1]=="try-error" | fit$converged == ""){
-      warning(paste0("Not enough data to fit model for pattern ",  paste(p, collapse = ":"),
-                     ". Returing NA"))
-      map[ind, score := NA]
-    } else{
-      map[ind, score := predict(fit, newdata = map[ind], type = "response")]
-    }
-    print(p)
-    map[ind, pattern := paste(p, collapse = ":")]
   }
-
-  map[, pattern := factor(pattern, levels = sapply(patterns, paste, collapse = ":"))]
-  map[, score := (score - min(score, na.rm = TRUE)) / max(score - min(score,na.rm = TRUE), na.rm = TRUE)]
-
+  new_i_match_cols <- paste(c("pn", "sn", "ap", "am"), "i_match_numeric", sep="_")
+  i_match_cols <- paste(c("pn", "sn", "ap", "am"), "i_match", sep="_")
+  map[, (new_i_match_cols) := lapply(.SD, function(x){
+    x <- as.numeric(x)
+    x[is.na(x)] <- 1
+    return(x)
+  }), .SDcols = i_match_cols]
+  
+  name_match_cols <- paste(c("pn", "sn", "ap", "am"), "match", sep = "_")
+  map[, (name_match_cols) := lapply(.SD, function(x){x == 0 | is.na(x)}),
+      .SDcols = paste(c("pn", "sn", "ap", "am"), "dist", sep = "_")]
+  
+  map$perfect <- as.numeric(map$match_type == "perfect")
+  ### create training dataset of random forest
+  setorder(map, id.x, -prop_match)
+  train <- map[!is.na(lugar_match),.SD[1], by = id.x]
+  train$y <- factor(train$lugar_match)
+  cols <- c("y", "perfect", "prop_match", "nchar", "pattern", "swap", "truncated", new_i_match_cols, freq_cols, name_match_cols )
+  train <- train[, ..cols]
+  #library(caret)
+  #library(doParallel)
+  #registerDoParallel(cores = detectCores() - 1)
+  ##control <- trainControl(method = "cv", number = 10, p = .9, , allowParallel = TRUE)
+  ##fit <- train(y ~ ., method = "rf", data = train, tuneGrid = data.frame(mtry = 3:6), trControl = control)
+  cat("Ajustando modelo con random forest.\n")
+  fit <- randomForest(y ~ ., data = train, mtry = mtry)
+  cat("Predciendo probabilidades.\n")
+  map$score <- predict(fit, newdata = map, type = "prob")[,2]
+  map[, (name_match_cols) := NULL]
+  map[, (new_i_match_cols) := NULL]
+  map[, perfect := NULL]
   return(map)
 }
+
+# calibrate_matches <- function(map){
+# 
+#   map <- copy(map)
+#   message("\nCalibrando el pareo.")
+#   map[, prop_match := as.numeric(NA)]
+#   map[, score := as.numeric(NA)]
+#   map[, pattern := as.character(NA)]
+#   map[, full_prop_match := 1 - full_dist/full_nchar]
+#   map$pn_ap_match <- 1 - rowSums(map[,c("pn_dist", "ap_dist")], na.rm = TRUE)/
+#     rowSums(map[,c("pn_nchar", "ap_nchar")],na.rm = TRUE)
+#   ### form the prop match of the individual parts so we can pick best fit
+#   total_dist <- rowSums(map[, c("pn_dist", "sn_dist", "ap_dist", "am_dist")], na.rm = TRUE)
+#   total_nchar <- rowSums(sapply(c("pn", "sn", "ap", "am"), function(i){
+#     x <- map[[paste(i,"dist", sep = "_")]]
+#     y <- map[[paste(i,"nchar", sep = "_")]]
+#     y[is.na(x)] <- 0
+#     y
+#   }))
+#   sn_i_match <- map$sn_i_match 
+#   sn_i_match[is.na(sn_i_match)] <- 1
+#   total_dist <- total_dist + ifelse(is.na(map$sn_dist), 1 - sn_i_match*1, 0)
+#   total_nchar <- total_nchar +  ifelse(is.na(map$sn_dist) & !is.na(map$sn_i_match), 1, 0)
+#   map$total_prop_match <- 1 - total_dist/total_nchar
+#   map[,max_match := pmax(total_prop_match, full_prop_match)]
+#   ## order 
+#   setorder(map, id.x, max_match)
+#   map[,max_match := NULL]
+#   
+#   patterns <- list(c("pn", "sn", "ap", "am"),
+#                    c("pn", "sn_i", "ap", "am"),
+#                    c("pn", "ap", "am"),
+#                    c("pn", "sn", "ap"),
+#                    c("pn", "sn_i", "ap"),
+#                    c("pn", "ap"),
+#                    c("ap", "am"))
+# 
+#   ## what name frequencies to include in model
+#   ## decided usign EDA
+#   freqs <- list(c("ap","am"),
+#                 c("ap", "am"),
+#                 c("pn", "ap", "am"),
+#                 c("ap"),
+#                 c("pn", "ap"),
+#                 c("pn", "ap"),
+#                 c("ap","am"))
+# 
+#   ## for names with missing frequencies impute the median
+#   freq_impute <- function(x){
+#     x[is.na(x)] <- median(x, na.rm=TRUE)
+#     return(x)
+#   }
+#   cols <- paste(c("pn", "sn", "ap", "am"), "freq", sep="_")
+#   map[, (cols) := lapply(.SD, freq_impute), .SDcols = cols]
+#  
+#   map[, sn_i_dist := as.numeric(!sn_i_match)]
+#   map[, sn_i_nchar := as.numeric(!is.na(sn_i_match))]
+#   
+#   for(i in seq_along(patterns)){
+#     p <- patterns[[i]]
+#     print(p)
+#     dist_cols <- paste(p, "dist", sep="_")
+#     nchar_cols <- paste(p, "nchar", sep="_")
+#     if(!is.null(freqs[[i]])){
+#       freq_cols <- paste(freqs[[i]], "freq", sep="_")
+#     } else freq_cols <- NULL
+# 
+#     ind <- !matrixStats::rowAnyNAs(as.matrix(map[, ..dist_cols])) &
+#       is.na(map[,score]) ## needed columns not NA and not yet scored
+# 
+#     map$prop_match[ind] <- 1 - rowSums(map[ind,..dist_cols])/(rowSums(map[ind,..nchar_cols]))
+#   
+#     the_formula <- paste("dob_match ~ pmax(prop_match,0.6)")
+#     if(!is.null(freq_cols)){
+#       the_formula <- paste(the_formula, "+",
+#                            paste0("log(pmax(", freq_cols, ",10^-4))", collapse = " + "))
+#     }
+#     if(sum(map[ind & !is.na(dob_match)]$swap) >= 100) the_formula <- paste(the_formula, "swap", sep="+")
+#     the_formula <- formula(the_formula)
+#     
+#     ## now pick best fit so we don't fit glm to all the garbage
+#     dat <- map[ind & !is.na(dob_match), .SD[1], by = id.x]
+#     print(nrow(dat))
+#     fit <- try(glm(the_formula, family = "binomial", data = dat), silent=TRUE)
+#     if(class(fit)[1]=="try-error" | fit$converged == ""){
+#       warning(paste0("Not enough data to fit model for pattern ",  paste(p, collapse = ":"),
+#                      ". Returing NA"))
+#       map[ind, score := NA]
+#     } else{
+#       map[ind, score := predict(fit, newdata = map[ind], type = "response")]
+#     }
+#     print(p)
+#     map[ind, pattern := paste(p, collapse = ":")]
+#   }
+# 
+#   map[, pattern := factor(pattern, levels = sapply(patterns, paste, collapse = ":"))]
+#   map[, score := (score - min(score, na.rm = TRUE)) / max(score - min(score,na.rm = TRUE), na.rm = TRUE)]
+# 
+#   return(map)
+# }
 
 
 cleanup_matches <- function(map, query, target, self.match, cutoff = 0){
