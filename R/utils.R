@@ -292,7 +292,7 @@ perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
     }
   } else{
     map[, full_dist := stringdist(full.x, full.y)]
-    map[, full_nchar := pmin(nchar(full.x), nchar(full.y))]
+    map[, full_nchar := pmax(nchar(full.x), nchar(full.y))]
     cols <- paste(by.x[by.x != "sn_i"], "dist", sep = "_")
     map[,(cols) := 0L]
     for (cn in by.x[!by.x %in% "sn_i"]) {
@@ -455,12 +455,24 @@ calibrate_matches <- function(map){
   map[, full_prop_match := 1 - full_dist/full_nchar]
   map$pn_ap_match <- 1 - rowSums(map[,c("pn_dist", "ap_dist")], na.rm = TRUE)/
     rowSums(map[,c("pn_nchar", "ap_nchar")],na.rm = TRUE)
-
-  ## keep if 90% match with full name
-  map[full_prop_match >= 0.9, `:=`(prop_match = full_prop_match,
-                                   score = mean(dob_match, na.rm=TRUE),
-                                   pattern = "full")]
-
+  ### form the prop match of the individual parts so we can pick best fit
+  total_dist <- rowSums(map[, c("pn_dist", "sn_dist", "ap_dist", "am_dist")], na.rm = TRUE)
+  total_nchar <- rowSums(sapply(c("pn", "sn", "ap", "am"), function(i){
+    x <- map[[paste(i,"dist", sep = "_")]]
+    y <- map[[paste(i,"nchar", sep = "_")]]
+    y[is.na(x)] <- 0
+    y
+  }))
+  sn_i_match <- map$sn_i_match 
+  sn_i_match[is.na(sn_i_match)] <- 1
+  total_dist <- total_dist + ifelse(is.na(map$sn_dist), 1 - sn_i_match*1, 0)
+  total_nchar <- total_nchar +  ifelse(is.na(map$sn_dist) & !is.na(map$sn_i_match), 1, 0)
+  map$total_prop_match <- 1 - total_dist/total_nchar
+  map[,max_match := pmax(total_prop_match, full_prop_match)]
+  ## order 
+  setorder(map, id.x, max_match)
+  map[,max_match := NULL]
+  
   patterns <- list(c("pn", "sn", "ap", "am"),
                    c("pn", "sn_i", "ap", "am"),
                    c("pn", "ap", "am"),
@@ -489,13 +501,15 @@ calibrate_matches <- function(map){
 
   map[, sn_i_dist := as.numeric(!sn_i_match)]
   map[, sn_i_nchar := as.numeric(!is.na(sn_i_match))]
+  
   for(i in seq_along(patterns)){
     p <- patterns[[i]]
+    print(p)
     dist_cols <- paste(p, "dist", sep="_")
     nchar_cols <- paste(p, "nchar", sep="_")
     if(!is.null(freqs[[i]])){
       freq_cols <- paste(freqs[[i]], "freq", sep="_")
-    } else freq_cols<- NULL
+    } else freq_cols <- NULL
 
     ind <- !matrixStats::rowAnyNAs(as.matrix(map[, ..dist_cols])) &
       is.na(map[,score]) ## needed columns not NA and not yet scored
@@ -509,16 +523,19 @@ calibrate_matches <- function(map){
     }
     if(sum(map[ind & !is.na(dob_match)]$swap) >= 100) the_formula <- paste(the_formula, "swap", sep="+")
     the_formula <- formula(the_formula)
-
-    fit <- try(glm(the_formula, family = "binomial", data = map[ind & !is.na(dob_match)]), silent=TRUE)
-    if(class(fit)[1]=="try-error"){
+    
+    ## now pick best fit so we don't fit glm to all the garbage
+    dat <- map[ind & !is.na(dob_match), .SD[1], by = id.x]
+    print(nrow(dat))
+    fit <- try(glm(the_formula, family = "binomial", data = dat), silent=TRUE)
+    if(class(fit)[1]=="try-error" | fit$converged == ""){
       warning(paste0("Not enough data to fit model for pattern ",  paste(p, collapse = ":"),
                      ". Returing NA"))
       map[ind, score := NA]
     } else{
       map[ind, score := predict(fit, newdata = map[ind], type = "response")]
     }
-
+    print(p)
     map[ind, pattern := paste(p, collapse = ":")]
   }
 
