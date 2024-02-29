@@ -2,7 +2,7 @@
 #'
 #' @import data.table
 #' @import stringr
-#' @import randomForrest
+#' @import randomForest
 #' @importFrom parallel detectCores mclapply
 #' @importFrom stringdist stringdist stringdistmatrix
 #' @importFrom matrixStats rowAnyNAs
