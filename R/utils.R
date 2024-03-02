@@ -3,10 +3,10 @@
 #' @import data.table
 #' @import stringr
 #' @import randomForest
-#' @importFrom parallel detectCores mclapply
+#' @import doSNOW
+#' @importFrom parallel detectCores
 #' @importFrom stringdist stringdist stringdistmatrix
 #' @importFrom matrixStats rowAnyNAs
-
 
 fix_names <- function(x){
   levels(x) <-
@@ -112,7 +112,7 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
   pms <- vector("list", n)
   
   message("Encontrando pareos exactos.")
-  pb <-  txtProgressBar( 1, n, style = 3)
+  pb <-  txtProgressBar(1, n, style = 3)
   
   ## We use these to remove perfect matches and stop paring them
   keep_query <- rep(TRUE, nrow(query))
@@ -332,10 +332,13 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
   m <- pmax(ceiling(n/max.rows), n.cores)
   
   indexes <- split(1:n, cut(1:n, quantile(1:n, seq(0, 1, len = m + 1)), include.lowest = TRUE))
-  
+
   cat("Calculando distancias. Dividiendo query en", m, "tabla(s)\n")
-  
-  fms <- mclapply(indexes, function(ind){
+  cl <- makeCluster(n.cores) 
+  registerDoSNOW(cl) 
+  pb <- txtProgressBar(max = m, style = 3)
+  progress <- function(n) setTxtProgressBar(pb, n)
+  fms <- foreach(ind = indexes, .combine = c, .options.snow = list(progress = progress)) %dopar% {
     
     if (self.match & length(ind) < 2) {
       return(NULL)
@@ -438,11 +441,13 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     } else{
       matches2 <- NULL
     }
-    return(rbindlist(c(matches, matches2)))
-  }, mc.cores = n.cores)
-
-  cat("Combinando tablas.\n")
-    fms <- rbindlist(fms)
+    c(matches, matches2)
+  }
+  close(pb)
+  stopCluster(cl) 
+  
+  #cat("Combinando tablas.\n")
+  fms <- rbindlist(fms)
   return(fms)
 }
 
