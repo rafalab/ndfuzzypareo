@@ -335,7 +335,7 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
   indexes <- split(1:n, cut(1:n, quantile(1:n, seq(0, 1, len = m + 1)), include.lowest = TRUE))
 
   cat("Calculando distancias. Dividiendo query en", m, "tabla(s)\n")
-  cl <- makeCluster(n.cores) 
+  cl <- snow::makeCluster(n.cores) 
   registerDoSNOW(cl) 
   pb <- txtProgressBar(max = m, style = 3)
   progress <- function(n) setTxtProgressBar(pb, n)
