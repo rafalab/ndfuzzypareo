@@ -4,6 +4,7 @@
 #' @import stringr
 #' @import randomForest
 #' @import doSNOW
+#' @import foreach
 #' @importFrom parallel detectCores
 #' @importFrom stringdist stringdist stringdistmatrix
 #' @importFrom matrixStats rowAnyNAs
