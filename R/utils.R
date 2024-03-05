@@ -77,7 +77,7 @@ reverse_date <- function(tab){
   tab[!is.na(dob),]
 }
 
-get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
+get_all_matches <-  function(query, target, total.max = 8, full.max= 8, matches.max = 3,
                              check.truncated = TRUE, truncate = "am", self.match = FALSE, max.rows = 100, n.cores = NULL) {
   message("Calculando frecuencias de los nombres.")
   freq <- compute_name_freqs(target)
@@ -175,7 +175,7 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8,
   message("\nEncontrando pareos con errores.")
 
   fms <- fuzzy_match_engine(query[keep_query], target[keep_target],  
-                            total.max = total.max,  full.max = full.max,
+                            total.max = total.max,  full.max = full.max, matches.max = matches.max,
                             self.match = self.match, max.rows = max.rows, n.cores = n.cores)
   if(!is.null(fms)){
     if(nrow(fms)>0){
@@ -320,7 +320,7 @@ perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
 }
 
 fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.match = FALSE,
-                               matches.max = 5, max.rows = 100, n.cores = NULL){
+                               matches.max = 3, max.rows = 100, n.cores = NULL){
 
   qnames <- paste(names(query), "x", sep = ".")
   tnames <- paste(names(target), "y", sep = ".")
