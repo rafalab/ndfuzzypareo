@@ -348,9 +348,9 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     qq <- query[ind,]
     setnames(qq, qnames)
     
-    full_dist <- stringdistmatrix(qq$full.x, tt$full.y, method = "lv")
+    full_dist <- stringdistmatrix(qq$full.x, tt$full.y, method = "lv", nthread = 1)
     
-    pn_dist <- stringdistmatrix(qq$pn.x, tt$pn.y, method = "lv")
+    pn_dist <- stringdistmatrix(qq$pn.x, tt$pn.y, method = "lv", nthread = 1)
     
     if (self.match) { ##don't compare twice
       full_dist[lower.tri(full_dist, diag = TRUE)] <- Inf
@@ -363,16 +363,16 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     sn_i_dist <- outer(qq$sn.x, tt$sn.y, `!=`)*1
     sn_i_dist[is.na(sn_i_dist)] <- 0
     
-    sn_dist <- stringdistmatrix(qq$sn.x, tt$sn.y, method = "lv")
+    sn_dist <- stringdistmatrix(qq$sn.x, tt$sn.y, method = "lv", nthread = 1)
     sn_dist_nona <- sn_dist
     sn_dist_nona[is.na(sn_dist_nona)] <- sn_i_dist[is.na(sn_dist_nona)]
     
     ## consider reversed last names
-    ap_dist <- stringdistmatrix(qq$ap.x, tt$ap.y, method = "lv")
+    ap_dist <- stringdistmatrix(qq$ap.x, tt$ap.y, method = "lv", nthread = 1)
     ap_dist_nona <- ap_dist
     ap_dist_nona[is.na(ap_dist_nona)] <- 0
     
-    am_dist <- stringdistmatrix(qq$am.x, tt$am.y, method = "lv")
+    am_dist <- stringdistmatrix(qq$am.x, tt$am.y, method = "lv", nthread = 1)
     am_dist_nona <- am_dist
     am_dist_nona[is.na(am_dist_nona)] <- 0
     
@@ -409,9 +409,9 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
       
       qq <- qq[nomatch_ind]
       
-      ap_dist <- stringdistmatrix(qq$ap.x, tt$am.y, method = "lv")
+      ap_dist <- stringdistmatrix(qq$ap.x, tt$am.y, method = "lv", nthread = 1)
       
-      am_dist <- stringdistmatrix(qq$am.x, tt$ap.y, method = "lv")
+      am_dist <- stringdistmatrix(qq$am.x, tt$ap.y, method = "lv", nthread = 1)
       
       total <- pn_dist_nona[nomatch_ind,,drop = FALSE] +
         sn_dist_nona[nomatch_ind,,drop = FALSE] +
