@@ -324,11 +324,11 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
   tnames <- paste(names(target), "y", sep = ".")
   
   tt <- copy(target)
-  setnames(tt, tnames)
+  data.table::setnames(tt, tnames)
   
   if (is.null(n.cores)) n.cores <- pmax(detectCores() - 1, 1)  # Leave one core free
   n <- nrow(query)
-  m <- pmax(ceiling(n/max.rows), n.cores)
+  m <- pmin(n, pmax(ceiling(n/max.rows), n.cores))
   
   indexes <- split(1:n, cut(1:n, quantile(1:n, seq(0, 1, len = m + 1)), include.lowest = TRUE))
 
@@ -398,7 +398,7 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
           total_rank <- rank(total[j,ind], ties.method = "min")
           full_rank <- rank(full_dist[j,ind], ties.method = "min")
           ind <- ind[pmin(total_rank, full_rank) <= matches.max]
-        } else{ rank1 <- NA; rank2 <- NA}
+        } 
         ret <- cbind(qq[j],
                      tt[ind],
                      data.table(full_dist = full_dist[j, ind], 
@@ -443,19 +443,15 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
         if (length(ind) == 0) return(NULL) else{
           if (length(ind) > matches.max) {
             total_rank <- rank(total[ind], ties.method = "min")
-            rank1 <- full_rank[total_rank <= matches.max]
-            rank2 <- total_rank[total_rank <= matches.max]
             ind <- ind[total_rank <= matches.max]
-          } else{ total_rank <- NA; full_rank <- NA}
+          } 
           ret <- cbind(qq[j],
                        tt[ind],
                        data.table(full_dist = full_dist[j, ind], 
                                   pn_dist = pn_dist[j,ind], 
                                   sn_dist = sn_dist[j,ind], 
                                   ap_dist = ap_dist[j,ind], 
-                                  am_dist =  am_dist[j,ind],
-                                  total_rank = rank2,
-                                  full_rank = rank1))
+                                  am_dist =  am_dist[j,ind]))
           ret$swap <- TRUE
           return(ret)
         }
@@ -486,7 +482,7 @@ calibrate_matches <- function(map, mtry = 5){
                    c("pn", "sn"))
   
   message("\nCalibrando el pareo.")
-  map[,nchar:=as.numeric(NA)]
+  map[, nchar:=as.numeric(NA)]
   map[, prop_match := as.numeric(NA)]
   map[, score := as.numeric(NA)]
   map[, pattern := as.character(NA)]
