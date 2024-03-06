@@ -362,7 +362,8 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     
     pn_dist_nona <- pn_dist
     pn_dist_nona[is.na(pn_dist_nona)] <- 0
-    total <- pn_dist_nona[is.na(pn_dist_nona)]
+    
+    total <- pn_dist_nona
     rm(pn_dist_nona); gc(); gc()
     
     sn_i_dist <- outer(qq$sn.x, tt$sn.y, `!=`)*1
@@ -375,7 +376,6 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     total <- total + sn_dist_nona
     rm(sn_dist_nona); gc(); gc()
     
-    ## consider reversed last names
     ap_dist <- stringdistmatrix(qq$ap.x, tt$ap.y, method = "lv", nthread = 1)
     ap_dist_nona <- ap_dist
     ap_dist_nona[is.na(ap_dist_nona)] <- 0
@@ -428,12 +428,12 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
       
       total <- ap_dist + am_dist
       
-      pn_dist_nona <- pn_dist[nomatch_ind,,drop = FALSE]
+      pn_dist_nona <- pn_dist
       pn_dist_nona[is.na(pn_dist_nona)] <- 0
       total <- total + pn_dist_nona
       rm(pn_dist_nona); gc();gc()
         
-      sn_dist_nona <- sn_dist[nomatch_ind,,drop = FALSE]
+      sn_dist_nona <- sn_dist
       sn_dist_nona[is.na(sn_dist_nona)] <- 0
       total <- total + sn_dist_nona
       rm(sn_dist_nona); gc();gc()
