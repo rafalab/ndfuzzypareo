@@ -363,7 +363,7 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     pn_dist_nona <- pn_dist
     pn_dist_nona[is.na(pn_dist_nona)] <- 0
     total <- pn_dist_nona[is.na(pn_dist_nona)]
-    rm(pn_dist_nona[is.na(pn_dist_nona)]); gc(); gc()
+    rm(pn_dist_nona); gc(); gc()
     
     sn_i_dist <- outer(qq$sn.x, tt$sn.y, `!=`)*1
     sn_i_dist[is.na(sn_i_dist)] <- 0
