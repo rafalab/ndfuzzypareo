@@ -77,7 +77,7 @@ reverse_date <- function(tab){
   tab[!is.na(dob),]
 }
 
-get_all_matches <-  function(query, target, total.max = 8, full.max= 8, matches.max = 3,
+get_all_matches <-  function(query, target, total.max = 8, full.max= 8, matches.max = 5,
                              check.truncated = TRUE, truncate = "am", self.match = FALSE, max.rows = 100, n.cores = NULL) {
   message("Calculando frecuencias de los nombres.")
   freq <- compute_name_freqs(target)
@@ -167,7 +167,6 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8, matches.
       }
       pms$genero_match <- pms$genero.x == pms$genero.y
       pms$lugar_match <- pms$lugar.x == pms$lugar.y
-      pms$dob_match <- pms$dob.x == pms$dob.y
       pms$truncated <- FALSE
     } else pms <- NULL
   }
@@ -221,19 +220,18 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8, matches.
       fms$match <- factor("fuzzy", levels=c("perfect", "fuzzy"))
       fms$genero_match <- fms$genero.x == fms$genero.y
       fms$lugar_match <- fms$lugar.x == fms$lugar.y
-      fms$dob_match <- fms$dob.x == fms$dob.y
       fms$full_match <- FALSE
     }
   }
 
   if(is.null(pms) & is.null(fms)) return(NULL)
 
-  cols <- c("id.x", "id.y", 
+  cols <- c("id.x", "id.y", "dob.x", "dob.y",
             "full_dist", "pn_dist", "sn_dist", "ap_dist", "am_dist",
             "full_nchar", "pn_nchar", "sn_nchar", "ap_nchar", "am_nchar",
             "full_i_match",  "pn_i_match", "sn_i_match", "ap_i_match", "am_i_match",
             "pn_freq","sn_freq", "ap_freq", "am_freq",
-            "dob_match", "genero_match", "lugar_match", "match", "full_match",
+            "genero_match", "lugar_match", "match", "full_match",
             "swap", "truncated")
   if(!is.null(pms)){
     if(nrow(pms) > 0){
@@ -320,7 +318,7 @@ perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
 }
 
 fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.match = FALSE,
-                               matches.max = 3, max.rows = 100, n.cores = NULL){
+                               matches.max = 5, max.rows = 100, n.cores = NULL){
 
   qnames <- paste(names(query), "x", sep = ".")
   tnames <- paste(names(target), "y", sep = ".")
@@ -335,11 +333,16 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
   indexes <- split(1:n, cut(1:n, quantile(1:n, seq(0, 1, len = m + 1)), include.lowest = TRUE))
 
   cat("Calculando distancias. Dividiendo query en", m, "tabla(s)\n")
+  
+  ## Ready for parallel computations
   cl <- snow::makeCluster(n.cores) 
   registerDoSNOW(cl) 
   pb <- txtProgressBar(max = m, style = 3)
   progress <- function(n) setTxtProgressBar(pb, n)
-  fms <- foreach(ind = indexes, .combine = c, .options.snow = list(progress = progress)) %dopar% {
+
+  ## Compute distances
+  fms <- foreach(ind = indexes, .combine = c, 
+                 .options.snow = list(progress = progress)) %dopar% {
     
     if (self.match & length(ind) < 2) {
       return(NULL)
@@ -359,6 +362,8 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     
     pn_dist_nona <- pn_dist
     pn_dist_nona[is.na(pn_dist_nona)] <- 0
+    total <- pn_dist_nona[is.na(pn_dist_nona)]
+    rm(pn_dist_nona[is.na(pn_dist_nona)]); gc(); gc()
     
     sn_i_dist <- outer(qq$sn.x, tt$sn.y, `!=`)*1
     sn_i_dist[is.na(sn_i_dist)] <- 0
@@ -367,16 +372,23 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     sn_dist_nona <- sn_dist
     sn_dist_nona[is.na(sn_dist_nona)] <- sn_i_dist[is.na(sn_dist_nona)]
     
+    total <- total + sn_dist_nona
+    rm(sn_dist_nona); gc(); gc()
+    
     ## consider reversed last names
     ap_dist <- stringdistmatrix(qq$ap.x, tt$ap.y, method = "lv", nthread = 1)
     ap_dist_nona <- ap_dist
     ap_dist_nona[is.na(ap_dist_nona)] <- 0
     
+    total <- total + ap_dist_nona
+    rm(ap_dist_nona); gc(); gc()
+    
     am_dist <- stringdistmatrix(qq$am.x, tt$am.y, method = "lv", nthread = 1)
     am_dist_nona <- am_dist
     am_dist_nona[is.na(am_dist_nona)] <- 0
     
-    total <- pn_dist_nona + sn_dist_nona + ap_dist_nona + am_dist_nona
+    total <- total + am_dist_nona
+    rm(am_dist_nona); gc(); gc()
     
     ## for all the rows of the target that are within 6 errors of the query we keep
     matches <- lapply(1:nrow(total), function(j){
@@ -400,6 +412,7 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
     })
     nomatch_ind <- sapply(matches, is.null)
     
+    rm(ap_dist, am_dist);gc();gc()
     ## if no match look for swap last name match
     if (any(nomatch_ind)) {
       
@@ -413,9 +426,17 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
       
       am_dist <- stringdistmatrix(qq$am.x, tt$ap.y, method = "lv", nthread = 1)
       
-      total <- pn_dist_nona[nomatch_ind,,drop = FALSE] +
-        sn_dist_nona[nomatch_ind,,drop = FALSE] +
-        ap_dist + am_dist
+      total <- ap_dist + am_dist
+      
+      pn_dist_nona <- pn_dist[nomatch_ind,,drop = FALSE]
+      pn_dist_nona[is.na(pn_dist_nona)] <- 0
+      total <- total + pn_dist_nona
+      rm(pn_dist_nona); gc();gc()
+        
+      sn_dist_nona <- sn_dist[nomatch_ind,,drop = FALSE]
+      sn_dist_nona[is.na(sn_dist_nona)] <- 0
+      total <- total + sn_dist_nona
+      rm(sn_dist_nona); gc();gc()
       
       matches2 <- lapply(1:nrow(total), function(j){
         ind <- which(total[j,] <= total.max)
