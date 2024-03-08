@@ -251,15 +251,15 @@ get_all_matches <-  function(query, target, total.max = 8, full.max= 8, matches.
 
 perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
 
-  if(is.null(by.x)) by.x <- by
-  if(is.null(by.y)) by.y <- by
+  if (is.null(by.x)) by.x <- by
+  if (is.null(by.y)) by.y <- by
 
   ## remove rows with NAs in the columns we are matching by
   ind.x <- !matrixStats::rowAnyNAs(as.matrix(query[, ..by.x]))
   ind.y <- !matrixStats::rowAnyNAs(as.matrix(target[, ..by.y]))
 
   ## if no rows left return NULL
-  if(length(ind.x)==0L & length(ind.y)==0L) return(NULL)
+  if (length(ind.x) == 0L & length(ind.y) == 0L) return(NULL)
 
   ## Now we merge
   map <- merge(query[ind.x], target[ind.y], by.x = by.x, by.y = by.y)
@@ -273,14 +273,14 @@ perfect_match_engine <- function(query, target, by=NULL, by.x=NULL, by.y=NULL){
   cols <- c(outer(c("full", "pn", "sn", "ap", "am"), c("i_match"), paste, sep = "_"))
   map[,(cols) := as.logical(NA)]
 
-  if(identical(by.x, "full")){
+  if (identical(by.x, "full")) {
     map[, full_dist := 0]
     map[, full_i_match := TRUE]
     map[, full_nchar := nchar(full)]
-    for(cn in c("pn", "sn", "ap", "am")){
+    for (cn in c("pn", "sn", "ap", "am")) {
       ind <- !is.na(map[[paste(cn, "x", sep = ".")]]) & !is.na(map[[paste(cn, "y", sep = ".")]])
       map[[paste(cn, "dist", sep = "_")]] <- ifelse(ind, 0, NA)
-      if(cn != "sn"){
+      if (cn != "sn") {
         map[[paste(cn, "i_match", sep = "_") ]][ind] <- TRUE
       } else{
         map[[paste(cn, "i_match", sep = "_") ]][!is.na(map[["sn_i.x"]]) & !is.na(map[["sn_i.y"]])] <- TRUE
@@ -469,8 +469,21 @@ fuzzy_match_engine <- function(query, target, total.max = 8, full.max = 8, self.
   return(fms)
 }
 
-calibrate_matches <- function(map, mtry = 5){
+calibrate_matches <- function(map, prop.match.min = 0.65, n.max = 100, sampsize = NULL){
+  
+  cat("Computing distances.")
   map <- copy(map)
+  
+  map[, nchar := as.numeric(NA)]
+  map[, prop_match := as.numeric(NA)]
+  map[, score := as.numeric(NA)]
+  map[, pattern := as.character(NA)]
+  map[, full_prop_match := 1 - full_dist/full_nchar]
+  map$pn_ap_match <- 1 - rowSums(map[,c("pn_dist", "ap_dist")], na.rm = TRUE)/rowSums(map[,c("pn_nchar", "ap_nchar")],na.rm = TRUE)
+  map$dob_dist <- stringdist::stringdist(map$dob.x, map$dob.y, "lv")
+  
+  ## Make initials numbers so we can add
+  
   patterns <- list(c("pn", "sn", "ap", "am"),
                    c("pn", "sn_i", "ap", "am"),
                    c("pn", "ap", "am"),
@@ -481,72 +494,130 @@ calibrate_matches <- function(map, mtry = 5){
                    c("ap"),
                    c("pn", "sn"))
   
-  message("\nCalibrando el pareo.")
-  map[, nchar:=as.numeric(NA)]
-  map[, prop_match := as.numeric(NA)]
-  map[, score := as.numeric(NA)]
-  map[, pattern := as.character(NA)]
-  map[, full_prop_match := 1 - full_dist/full_nchar]
-  map$pn_ap_match <- 1 - rowSums(map[,c("pn_dist", "ap_dist")], na.rm = TRUE)/
-    rowSums(map[,c("pn_nchar", "ap_nchar")],na.rm = TRUE)
-  ### form the prop match of the individual parts so we can pick best fit
-  freq_cols <- paste(c("pn", "sn", "ap", "am"), "freq", sep="_")
-  map[, (freq_cols) := lapply(.SD, function(x){
-    x[is.na(x)] <- median(x, na.rm=TRUE)
-    return(x)
-  }), .SDcols = freq_cols]
-  
-  map[, sn_i_dist := as.numeric(!sn_i_match)]
-  map[, sn_i_nchar := as.numeric(!is.na(sn_i_match))]
-  
-  ## check sn_i_match is NA for dc31beb8-54da-46a0-b54d-50ff6f5f608d
-  ## compute prop_match for every pattern
-  for(i in seq_along(patterns)){
+  ## pick the best pattern for each id
+  map[, sn_i_dist := as.numeric(!sn_i_match)] ## need these numeric as distance is addition
+  map[, sn_i_nchar := as.numeric(!is.na(sn_i_match))] ##count initial for the name length only when it is there
+  for (i in seq_along(patterns)) {
     p <- patterns[[i]]
     dist_cols <- paste(p, "dist", sep = "_")
-    nchar_cols <- paste(p, "nchar", sep="_")
+    nchar_cols <- paste(p, "nchar", sep = "_")
     ind <- which(!matrixStats::rowAnyNAs(as.matrix(map[, ..dist_cols])) & is.na(map$prop_match))
-    if(length(ind) > 0){
+    if (length(ind) > 0) {
       map$prop_match[ind] <- 1 - rowSums(map[ind, ..dist_cols])/(rowSums(map[ind, ..nchar_cols]))
       map$nchar[ind] <- rowSums(map[ind,..nchar_cols])
       map$pattern[ind] <- paste(patterns[[i]], collapse = ":")
     }
   }
-  new_i_match_cols <- paste(c("pn", "sn", "ap", "am"), "i_match_numeric", sep="_")
-  i_match_cols <- paste(c("pn", "sn", "ap", "am"), "i_match", sep="_")
-  map[, (new_i_match_cols) := lapply(.SD, function(x){
-    x <- as.numeric(x)
-    x[is.na(x)] <- 1
-    return(x)
-  }), .SDcols = i_match_cols]
+  map[, original_order := .I]
   
-  name_match_cols <- paste(c("pn", "sn", "ap", "am"), "match", sep = "_")
-  map[, (name_match_cols) := lapply(.SD, function(x){x == 0 | is.na(x)}),
-      .SDcols = paste(c("pn", "sn", "ap", "am"), "dist", sep = "_")]
+  if (any(map$prop_match >= prop.match.min)) {
+    nomap <- map[prop_match < prop.match.min]
+    map <- map[prop_match >= prop.match.min]
+    
+    setorder(map, id.x, -prop_match)
+    all_train <- map[!is.na(lugar_match),.SD[1], by = id.x]
+    
+    ## Compute median frequencies to impute NAs later
+    u_ind <- which(!duplicated(map$id.x)) ## used to compute name frequency median
+    freq_medians <- map[u_ind, lapply(.SD, median, na.rm = TRUE), .SDcols = paste(c("pn", "sn", "ap", "am"), "freq", sep = "_")]
+    
+    ## compute prop_match for every pattern
+    cat("\nFitting a random forest to each pattern.")
+    for (i in 1:6) {
+      cat(".")
+      p <- patterns[[i]]
+      
+      if (i < 6) the_pattern <- paste(p, collapse = ":") else the_pattern <- sapply(patterns[6:9], paste, collapse = ":")
+      
+      train <- all_train[pattern %in% the_pattern]
+      
+      dist_cols <- paste(p, "dist", sep = "_")
+      nchar_cols <- paste(p, "nchar", sep = "_")
+      i_cols <- paste(setdiff(p, "sn_i"), "i_match", sep = "_")
+      freq_cols <- paste(setdiff(p, "sn_i"), "freq", sep = "_")
+      cols <- c("y", "prop_match", "nchar", i_cols)
+      if (i == 6) cols <- c(cols, "pattern")
+      
+      ind <- which(all_train$pattern %in% the_pattern)
+      
+      if (length(ind) >= n.max) {
+        
+        train <- all_train[ind,]
+        test <- map[pattern %in% the_pattern]
+        
+        ##impute frequencies forr missing ones
+        for (cn in paste(c("pn", "sn", "ap", "am"), "freq", sep = "_")) {
+          train[[cn]][is.na(train[[cn]])] <- freq_medians[[cn]]
+          test[[cn]][is.na(test[[cn]])] <- freq_medians[[cn]]
+        }
+        
+        train$y <- 1 - train$dob_dist/8 ### CHANGE: if blocking by dob this needs to change to lugar_match
+        
+        ## CHANGE: The following filtering is done because in our current dataset, perfect matches were likely removed when dob matched
+        ## the ones that are left will have a bias because dob is more likely not to match
+        train <- train[full_prop_match < 1] ##CHANGE: If a normal dataset, no need to filter out full prop match == 1. 
+        if (i %in% c(1,3)) train <- train[prop_match < 1] ## CHANGE: If a normal dataset, no need to filter out prop match == 1. 
+        
+        if (i == 6) { ## if i>=6 we are the two component patterns. we will fit just one model. the code below is putthing the values in just two of the columns
+          train <- train[pattern != "pn:ap" | prop_match < 1]
+          newnames <- c("pn_i_match", "ap_i_match", "pn_freq", "ap_freq")
+          oldnames <- c("ap_i_match", "am_i_match", "ap_freq", "am_freq")
+          for (j in seq_along(newnames)) { 
+            train[pattern == "ap:am"][[newnames[j]]] <- train[pattern == "ap:am"][[oldnames[j]]]
+            train[pattern == "ap:am", oldnames := NA]
+            
+            test[pattern == "ap:am"][[newnames[j]]] <- test[pattern == "ap:am"][[oldnames[j]]]
+            test[pattern == "ap:am", oldnames := NA]
+          }
+          oldnames <- c("pn_i_match", "sn_i_match", "pn_freq", "sn_freq")
+          for (j in seq_along(newnames)) { 
+            train[pattern == "pn:sn"][[newnames[j]]] <- train[pattern == "pn:sn"][[oldnames[j]]]
+            train[pattern == "ap:am", oldnames := NA]
+            
+            test[pattern == "pn:sn"][[newnames[j]]] <- test[pattern == "pn:sn"][[oldnames[j]]]
+            test[pattern == "ap:am", oldnames := NA]
+          }
+          train[pattern == "ap"][["pn_i_match"]] <- FALSE
+          test[pattern == "ap"][["pn_i_match"]] <- FALSE
+        }
+        
+        test$the_freq <- log10(pmax(1/(3*10^6), apply(test[,..freq_cols], 1, prod))) ## this is the log likelihood of entire name, 1 in 3 million is the min
+        train$the_freq <- log10(pmax(1/(3*10^6), apply(train[,..freq_cols], 1, prod))) ## this is the log likelihood of entire name, 1 in 3 million is the min
+        cols <- c(cols, "the_freq")
+        train <- train[,..cols]
+        
+        if (is.null(sampsize)) sampsize <- pmin(50000, nrow(train)) 
+        fit <- try(randomForest(y ~ ., data = train, mtry = 3, nodesize = 1000, ntree = 1000, 
+                                sampsize = pmin(sampsize, nrow(train))))
+        
+        if (class(fit)[1] == "try-error") {
+          warning("Model did not converge for ",  paste(the_pattern[1], collapse = ", "), ". Returing the average.")
+          map[pattern %in% the_pattern, score := mean(train$y)]
+        } else{
+          map[pattern %in% the_pattern, score := predict(fit, newdata = test)]
+        }
+      } else{
+        if (length(index) > 0) {
+          warning("Not enough training data to fit model for ", paste(the_pattern, collapse = ", "),  ". Returing the average.")
+          map[pattern %in% the_pattern, score := mean(train$y)]
+        } else{
+          warning("Not training data for ", paste(the_pattern, collapse = ", "),  ". Returing NAS.")
+          map[pattern %in% the_pattern, score := NA]
+        }
+      }
+    }
+    nomap$score <- min(map$score, na.rm = TRUE)
+    map <- rbind(map, nomap)
+  } else{
+    warning("Not enough matches have minimum proportion in common. Returing NAs.")
+  }
+  map <- map[order(original_order)]
+  map[, c("original_order", "sn_i_dist", "sn_i_nchar") := NULL]
+  map[, pattern := factor(pattern, levels = sapply(patterns, paste, collapse = ":"))]
   
-  map$perfect <- as.numeric(map$match_type == "perfect")
-  ### create training dataset of random forest
-  setorder(map, id.x, -prop_match)
-  train <- map[!is.na(lugar_match),.SD[1], by = id.x]
-  train$y <- factor(train$lugar_match)
-  cols <- c("y", "perfect", "prop_match", "nchar", "pattern", "swap", "truncated", new_i_match_cols, freq_cols, name_match_cols )
-  train <- train[, ..cols]
-  #library(caret)
-  #library(doSNOW)
-  #cl <- makeCluster(detectCores() - 1)
-  ##registerDoSNOW(cl)
-  ##control <- trainControl(method = "cv", number = 10, p = .9, , allowParallel = TRUE)
-  ##fit <- train(y ~ ., method = "rf", data = train, tuneGrid = data.frame(mtry = 3:6), trControl = control)
-  ##stopCluster(cl)
-  cat("Ajustando modelo con random forest.\n")
-  fit <- randomForest(y ~ ., data = train, mtry = mtry)
-  cat("Predciendo probabilidades.\n")
-  map$score <- predict(fit, newdata = map, type = "prob")[,2]
-  map[, (name_match_cols) := NULL]
-  map[, (new_i_match_cols) := NULL]
-  map[, perfect := NULL]
   return(map)
 }
+
 
 # calibrate_matches <- function(map){
 # 
@@ -648,30 +719,28 @@ calibrate_matches <- function(map, mtry = 5){
 #   return(map)
 # }
 
-
 cleanup_matches <- function(map, query, target, self.match, cutoff = 0){
-
-  message("\nLimpiando pareos.")
+  
+  message("Limpiando pareos.")
   ## map must be output of calibrate map
   map <- copy(map)
   map <- map[!is.na(score)]
-
+  
   ## Pick the best score for each id.x
-  if(!self.match){
-    map[order(id.y, !dob_match, !genero_match, !lugar_match, pattern, full_prop_match)]
+  if (!self.match) {
+    map <- map[order(id.y, dob_dist, !genero_match, !lugar_match, pattern, full_prop_match)]
     map <- map[map[,.I[which.max(score)], by = id.x]$V1]
   } else{
-    map[order(id.y, !dob_match, !genero_match, !lugar_match, pattern, full_prop_match)]
+    map <- map[order(id.y, dob_dist, !genero_match, !lugar_match, pattern, full_prop_match)]
     map <- map[map[,.I[which.max(score)], by = id.y]$V1]
-    map <- unique(map, by=c("id.x", "id.y"))
+    map <- unique(map, by = c("id.x", "id.y"))
   }
-
-  map <- merge(merge(map, query, by.x = "id.x", by.y = "id", all.x = TRUE), 
-               target, by.x = "id.y", by.y = "id", all.x = TRUE)
-  map$dob_dist <- stringdist(map$dob.x, map$dob.y)
-  cols <- c("id.x", "id.y", "original.x", "original.y", "dob.x", "dob.y", "score", "dob_dist",
-            "prop_match", "full_prop_match", "pn_ap_match", "lugar_match", 
-            "genero_match", "pattern", "match_type", "full_match", "swap", "truncated")
-  return(map[score >= cutoff, ..cols][order(score, decreasing = TRUE)])
+  
+  map[,c("dob.x", "dob.y") := NULL]
+  map <- merge(merge(map, query, by.x = "id.x", by.y = "id", all.x = TRUE), target, by.x = "id.y", by.y = "id", all.x = TRUE)
+  cols <- c("id.x", "id.y", "original.x", "original.y", "score",
+            "prop_match", "nchar", "dob_dist", "lugar_match", "genero_match", "pattern", 
+            "dob.x", "dob.y", "full_prop_match", "pn_ap_match", "match_type", "full_match", "swap", "truncated")
+  map <- map[score >= cutoff, ..cols][order(score, decreasing = TRUE)]
+  return(map)
 }
-
